@@ -1,0 +1,22 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information"
+    }
+  },
+  "extensions": {
+    "durableTask": {
+      "hubName": "orders",
+      "storageProvider": {
+        "type": "azureManaged",
+        "connectionStringName": "DURABLE_TASK_SCHEDULER_CONNECTION_STRING"
+      },
+      "defaultVersion": "2.0",
+      "versionMatchStrategy": "CurrentOrOlder",
+      "versionFailureStrategy": "Reject",
+      "extendedSessionsEnabled": true,
+      "extendedSessionIdleTimeoutInSeconds": 30
+    }
+  }
+}

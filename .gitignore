@@ -1,0 +1,10 @@
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+.DS_Store
+.build/
+function/bin/
+function/obj/
+function/publish/
+local.settings.json

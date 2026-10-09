@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1f23; --muted: #6b6f76; --line: #e3e1dc;
+    --accent: #2f5bd3; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #b7791f; --bad: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171a; --panel: #1e2125; --ink: #e8e9eb; --muted: #9aa0a8; --line: #30343a;
+      --accent: #7a9bff; --accent-ink: #0d1020; --ok: #4cc283; --warn: #e0a84a; --bad: #ef6f62;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 24px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  a { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .field { margin-bottom: 16px; }
+  .item { display: grid; grid-template-columns: minmax(0, 1fr) 80px 32px; gap: 8px; margin-bottom: 8px; }
+  button { font: inherit; border-radius: 6px; cursor: pointer; }
+  .primary { width: 100%; padding: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .primary:disabled { opacity: .6; cursor: progress; }
+  .ghost { padding: 6px 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); }
+  .remove { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+  .error { color: var(--bad); font-size: 13px; min-height: 1.5em; margin: 8px 0 0; }
+  .orders { display: flex; flex-direction: column; gap: 12px; }
+  .empty { color: var(--muted); }
+  .order { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .order-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .id { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  .Pending, .Running { color: var(--warn); }
+  .Completed { color: var(--ok); }
+  .Failed, .Terminated, .Error { color: var(--bad); }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .receipt { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; }
+  .receipt li { padding: 3px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; }
+  .receipt span:first-child { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Order Desk</h1>
+    <a id="dashboard" href="{{DASHBOARD_URL}}" target="_blank" rel="noopener">Open the task hub dashboard ↗</a>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>New order</h2>
+      <form id="form">
+        <div class="field">
+          <label for="email">Customer email</label>
+          <input id="email" type="email" required value="sam@example.com">
+        </div>
+        <label>Items (SKU, quantity)</label>
+        <div id="items"></div>
+        <button type="button" class="ghost" id="add">+ Add item</button>
+        <div class="field"></div>
+        <button class="primary" id="submit">Place order</button>
+        <p class="error" id="error"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Orders</h2>
+      <div class="orders" id="orders"><p class="empty">Orders you place appear here and update as their orchestrations run.</p></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // Relative to /api/shop, so the page talks to the same app it was served from.
+  const ORDERS = "orders";
+  const DONE = ["Completed", "Failed", "Terminated"];
+
+  const itemsEl = document.getElementById("items");
+  const ordersEl = document.getElementById("orders");
+  const errorEl = document.getElementById("error");
+
+  const dashboard = document.getElementById("dashboard");
+  if (!dashboard.getAttribute("href").startsWith("http")) dashboard.hidden = true;
+
+  function addItem(sku = "", quantity = 1) {
+    const row = document.createElement("div");
+    row.className = "item";
+    row.innerHTML = '<input class="sku" placeholder="SKU" required><input class="qty" type="number" min="1" required><button type="button" class="remove" aria-label="Remove item">×</button>';
+    row.querySelector(".sku").value = sku;
+    row.querySelector(".qty").value = quantity;
+    row.querySelector(".remove").onclick = () => { if (itemsEl.children.length > 1) row.remove(); };
+    itemsEl.append(row);
+  }
+  addItem("WIDGET", 2);
+  addItem("GADGET", 1);
+  document.getElementById("add").onclick = () => addItem();
+
+  document.getElementById("form").onsubmit = async (e) => {
+    e.preventDefault();
+    errorEl.textContent = "";
+    const order = {
+      customerEmail: document.getElementById("email").value,
+      items: [...itemsEl.children].map(r => ({
+        sku: r.querySelector(".sku").value.trim(),
+        quantity: Number(r.querySelector(".qty").value),
+      })),
+    };
+    const submit = document.getElementById("submit");
+    submit.disabled = true;
+    try {
+      const res = await fetch(ORDERS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
+      if (!res.ok) throw new Error(await res.text() || res.statusText);
+      const started = await res.json();
+      track(started.id ?? started.Id, order);
+    } catch (err) {
+      errorEl.textContent = "Could not place the order: " + err.message;
+    } finally {
+      submit.disabled = false;
+    }
+  };
+
+  function track(id, order) {
+    ordersEl.querySelector(".empty")?.remove();
+    const card = document.createElement("article");
+    card.className = "order";
+    card.innerHTML = '<div class="order-head"><strong></strong><span class="badge Pending">Pending</span></div><div class="id"></div><div class="meta"></div>';
+    card.querySelector("strong").textContent = order.customerEmail;
+    card.querySelector(".id").textContent = id;
+    card.querySelector(".meta").textContent = order.items.map(i => `${i.quantity} × ${i.sku}`).join(", ");
+    ordersEl.prepend(card);
+    poll(id, card, Date.now());
+  }
+
+  async function poll(id, card, startedAt) {
+    const badge = card.querySelector(".badge");
+    let status;
+    try {
+      const res = await fetch(`${ORDERS}/${encodeURIComponent(id)}`);
+      if (res.status === 404) { setTimeout(() => poll(id, card, startedAt), 1000); return; }
+      if (!res.ok) throw new Error(res.statusText);
+      const body = await res.json();
+      status = body.status;
+      badge.className = "badge " + status;
+      badge.textContent = DONE.includes(status) ? status : `${status} · ${Math.round((Date.now() - startedAt) / 1000)}s`;
+      if (status === "Completed" && body.output) showReceipt(card, JSON.parse(body.output));
+      if (status === "Failed" && body.output) card.querySelector(".meta").textContent = body.output;
+    } catch (err) {
+      badge.className = "badge Error";
+      badge.textContent = "Error";
+      card.querySelector(".meta").textContent = err.message;
+      return;
+    }
+    if (!DONE.includes(status)) setTimeout(() => poll(id, card, startedAt), 1000);
+  }
+
+  function showReceipt(card, r) {
+    const list = document.createElement("ul");
+    list.className = "receipt";
+    const rows = [
+      ["Version", r.version ?? r.Version],
+      ...(r.reservations ?? r.Reservations ?? []).map((x, i) => [i === 0 ? "Reservations" : "", x]),
+      ["Payment", r.payment ?? r.Payment],
+      ["Notification", r.notification ?? r.Notification],
+      ["Completed", new Date(r.completedAt ?? r.CompletedAt).toLocaleTimeString()],
+    ];
+    for (const [k, v] of rows) {
+      const li = document.createElement("li");
+      li.innerHTML = "<span></span><span></span>";
+      li.children[0].textContent = k;
+      li.children[1].textContent = v;
+      list.append(li);
+    }
+    card.append(list);
+  }
+</script>
+</body>
+</html>
