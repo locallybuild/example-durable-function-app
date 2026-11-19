@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Terraform providers
+  - package-ecosystem: "terraform"
+    directories:
+      - "/environments/locally"
+      - "/modules/durable-function-app"
+    schedule:
+      interval: "weekly"
+    groups:
+      terraform:
+        patterns:
+          - "*"
+
+  # .NET dependencies
+  - package-ecosystem: "nuget"
+    directories:
+      - "/function"
+      - "/function/obj/Release/net8.0/WorkerExtensions"
+    schedule:
+      interval: "weekly"
+    groups:
+      nuget:
+        patterns:
+          - "*"
+
+  # GitHub Actions used by the CI
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
